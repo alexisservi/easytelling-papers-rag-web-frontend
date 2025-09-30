@@ -8,6 +8,7 @@ class ChatApp {
     private messageService: MessageService;
     private userService: UserService;
     private addUserModal: any;
+    private resetSessionModal: any;
 
     constructor() {
         this.authService = new AuthService();
@@ -29,9 +30,14 @@ class ChatApp {
     }
 
     private initializeBootstrapModals(): void {
-        const modalElement = document.getElementById('addUserModal');
-        if (modalElement && (window as any).bootstrap) {
-            this.addUserModal = new (window as any).bootstrap.Modal(modalElement);
+        const addUserModalElement = document.getElementById('addUserModal');
+        if (addUserModalElement && (window as any).bootstrap) {
+            this.addUserModal = new (window as any).bootstrap.Modal(addUserModalElement);
+        }
+
+        const resetSessionModalElement = document.getElementById('resetSessionModal');
+        if (resetSessionModalElement && (window as any).bootstrap) {
+            this.resetSessionModal = new (window as any).bootstrap.Modal(resetSessionModalElement);
         }
     }
 
@@ -51,6 +57,9 @@ class ChatApp {
             }
         });
 
+        const resetSessionBtn = document.getElementById('resetSessionBtn') as HTMLButtonElement;
+        resetSessionBtn?.addEventListener('click', () => this.showResetSessionModal());
+
         // Navigation
         const logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
         logoutBtn?.addEventListener('click', () => this.handleLogout());
@@ -61,6 +70,10 @@ class ChatApp {
         // Add user form
         const confirmAddUserBtn = document.getElementById('confirmAddUser') as HTMLButtonElement;
         confirmAddUserBtn?.addEventListener('click', () => this.handleAddUser());
+
+        // Reset session confirmation
+        const confirmResetSessionBtn = document.getElementById('confirmResetSession') as HTMLButtonElement;
+        confirmResetSessionBtn?.addEventListener('click', () => this.handleResetSession());
     }
 
     private async handleLogin(e: Event): Promise<void> {
@@ -106,10 +119,9 @@ class ChatApp {
         const message = messageInput.value.trim();
         if (!message) return;
 
-        // Clear input and disable send button
+        // Clear input and disable all interactive elements
         messageInput.value = '';
-        sendBtn.disabled = true;
-        sendBtn.textContent = 'Sending...';
+        this.setLoadingState(true);
 
         // Add user message to chat immediately
         console.log('Adding user message:', message);
@@ -134,16 +146,97 @@ class ChatApp {
         } catch (error) {
             console.error('Error sending message:', error);
         } finally {
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send';
+            this.setLoadingState(false);
             messageInput.focus();
         }
     }
 
-    private handleLogout(): void {
-        this.authService.logout();
-        this.messageService.clearHistory();
-        this.showLoginPage();
+    private showResetSessionModal(): void {
+        this.resetSessionModal?.show();
+    }
+
+    private async handleResetSession(): Promise<void> {
+        // Hide the modal
+        this.resetSessionModal?.hide();
+
+        this.setLoadingState(true, 'reset');
+
+        try {
+            const userEmail = this.authService.getUserEmail();
+            const userToken = this.authService.getToken();
+
+            if (!userEmail || !userToken) {
+                throw new Error('Authentication required');
+            }
+
+            console.log('Resetting session...');
+            const response = await this.messageService.deleteSession(userEmail, userToken);
+            console.log('Reset session response:', response);
+
+            if (response.status !== 'success') {
+                alert(`Failed to reset session: ${response.message}`);
+            }
+        } catch (error) {
+            console.error('Error resetting session:', error);
+            alert('Failed to reset session. Please try again.');
+        } finally {
+            this.setLoadingState(false);
+        }
+    }
+
+    private setLoadingState(isLoading: boolean, action: 'send' | 'reset' = 'send'): void {
+        // Get all interactive elements
+        const messageInput = document.getElementById('messageInput') as HTMLInputElement;
+        const sendBtn = document.getElementById('sendBtn') as HTMLButtonElement;
+        const resetSessionBtn = document.getElementById('resetSessionBtn') as HTMLButtonElement;
+        const logoutBtn = document.getElementById('logoutBtn') as HTMLButtonElement;
+        const addUserBtn = document.getElementById('addUserBtn') as HTMLButtonElement;
+
+        if (isLoading) {
+            // Disable all buttons and input
+            messageInput.disabled = true;
+            sendBtn.disabled = true;
+            resetSessionBtn.disabled = true;
+            logoutBtn.disabled = true;
+            addUserBtn.disabled = true;
+
+            // Update button with loading state based on action
+            if (action === 'send') {
+                sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Consulting...';
+            } else if (action === 'reset') {
+                resetSessionBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Resetting...';
+            }
+        } else {
+            // Enable all buttons and input
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            resetSessionBtn.disabled = false;
+            logoutBtn.disabled = false;
+            addUserBtn.disabled = false;
+
+            // Reset buttons
+            sendBtn.textContent = 'Send';
+            resetSessionBtn.textContent = 'Reset Session';
+        }
+    }
+
+    private async handleLogout(): Promise<void> {
+        try {
+            const userEmail = this.authService.getUserEmail();
+            const userToken = this.authService.getToken();
+
+            // Delete session if user is authenticated
+            if (userEmail && userToken) {
+                await this.messageService.deleteSession(userEmail, userToken);
+            }
+        } catch (error) {
+            console.error('Error deleting session during logout:', error);
+            // Continue with logout even if session deletion fails
+        } finally {
+            this.authService.logout();
+            this.messageService.clearHistory();
+            this.showLoginPage();
+        }
     }
 
     private showAddUserModal(): void {

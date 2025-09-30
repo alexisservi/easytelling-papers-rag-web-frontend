@@ -114,4 +114,43 @@ export class MessageService {
         console.log('Manually updating session ID:', this.sessionId, '->', newSessionId);
         this.sessionId = newSessionId;
     }
+
+    async deleteSession(userEmail: string, userToken: string): Promise<{status: string, message: string}> {
+        try {
+            console.log('Deleting session:', this.sessionId);
+            const requestBody = {
+                user_email: userEmail,
+                session_id: this.sessionId
+            };
+
+            const response = await fetch(`${API_BASE_URL}/delete_session`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('Delete session response:', data);
+
+            if (data.status === 'success') {
+                // Generate new session ID (but keep chat history)
+                this.sessionId = this.generateSessionId();
+            }
+
+            return data;
+        } catch (error) {
+            console.error('Delete session error:', error);
+            return {
+                status: 'fail',
+                message: `Error deleting session: ${error instanceof Error ? error.message : 'Unknown error'}`
+            };
+        }
+    }
 }
